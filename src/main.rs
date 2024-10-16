@@ -1,5 +1,6 @@
+use iced::executor;
 use iced::widget::{column, container, horizontal_space, row, text, text_editor};
-use iced::{Element, Length, Sandbox, Settings, Theme};
+use iced::{Command, Application, Element, Length, Settings, Theme};
  
  // Run returns a result for errors and etc
 fn main() -> iced::Result {
@@ -16,17 +17,22 @@ enum Message {
     Edit(text_editor::Action)
 }
 
-impl Sandbox for Editor {
+impl Application for Editor {
     // Uma mensagem é um evento ou interações do usuário que a aplicação pode lidar ou reagir, ex: clique de um botão
     // A message is an event or user interaction that the application can handle or interact with, ex: a click in a button
     type Message = Message;
+    type Theme = Theme;
+    type Executor = executor::Default;
+    type Flags = ();
 
     // Dita o estado da aplicação ao iniciar
     // Application initial state
-    fn new() -> Self {
-        Self {
-            content: text_editor::Content::with(include_str!("main.rs")),
-        }
+    fn new(_flags: Self::Flags) -> (Self, Command<Message>) {
+        (
+            Self {
+                content: text_editor::Content::with(include_str!("main.rs")),
+            }, Command::none(),
+        )
     }
 
     // Título da aplicação
@@ -37,12 +43,14 @@ impl Sandbox for Editor {
 
     // Lógica para lidar com as mensagens;
     // Logic that handles messages
-    fn update(&mut self, message: Message) {
-        match message {
-            Message::Edit(action) => {
-                self.content.edit(action);
-            }
-        }
+    fn update(&mut self, message: Message) -> Command<Message> {
+            match message {
+                Message::Edit(action) => {
+                    self.content.edit(action);
+                }
+            } 
+            
+            Command::none()
     }
 
     // Lógica que produz os widgets da interface
