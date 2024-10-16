@@ -1,20 +1,26 @@
 use iced::executor;
-use iced::widget::{column, container, horizontal_space, row, text, text_editor};
-use iced::{Command, Application, Element, Length, Settings, Theme};
- 
- // Run returns a result for errors and etc
+use iced::widget::{ column, container, horizontal_space, row, text, text_editor };
+use iced::{ Command, Application, Element, Length, Settings, Theme };
+
+use std::io;
+use std::path::Path;
+use std::sync::Arc;
+
+// Run returns a result for errors and etc
 fn main() -> iced::Result {
     Editor::run(Settings::default())
 }
 
 struct Editor {
     content: text_editor::Content,
+    error: Option<io::ErrorKind>,
 }
 
 // Messages should generally to be clone because they represent pure events
 #[derive(Debug, Clone)]
 enum Message {
-    Edit(text_editor::Action)
+    Edit(text_editor::Action),
+    FileOpened(Result<Arc<String>, io::ErrorKind>),
 }
 
 impl Application for Editor {
@@ -30,8 +36,13 @@ impl Application for Editor {
     fn new(_flags: Self::Flags) -> (Self, Command<Message>) {
         (
             Self {
-                content: text_editor::Content::with(include_str!("main.rs")),
-            }, Command::none(),
+                content: text_editor::Content::new(),
+                error: None,
+            },
+            Command::perform(
+                load_file(format!("{}/src/main.rs", env!("CARGO_MANIFEST_DIR"))),
+                Message::FileOpened
+            ),
         )
     }
 
@@ -44,13 +55,19 @@ impl Application for Editor {
     // Lógica para lidar com as mensagens;
     // Logic that handles messages
     fn update(&mut self, message: Message) -> Command<Message> {
-            match message {
-                Message::Edit(action) => {
-                    self.content.edit(action);
-                }
-            } 
-            
-            Command::none()
+        match message {
+            Message::Edit(action) => {
+                self.content.edit(action);
+            }
+            Message::FileOpened(Ok(content)) => {
+                self.content = text_editor::Content::with(&content);
+            }
+            Message::FileOpened(Err(error)) => {
+                self.error = Some(error);
+            }
+        }
+
+        Command::none()
     }
 
     // Lógica que produz os widgets da interface
@@ -73,4 +90,11 @@ impl Application for Editor {
     fn theme(&self) -> Theme {
         Theme::Dark
     }
+}
+
+async fn load_file(path: impl AsRef<Path>) -> Result<Arc<String>, io::ErrorKind> {
+    tokio::fs
+        ::read_to_string(path).await
+        .map(Arc::new)
+        .map_err(|error| error.kind())
 }
