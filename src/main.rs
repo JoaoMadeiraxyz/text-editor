@@ -2,6 +2,7 @@ use iced::executor;
 use iced::widget::{ button, column, container, horizontal_space, row, text, text_editor, tooltip };
 use iced::{ Font, Command, Application, Element, Length, Settings, Theme };
 use iced::theme;
+use iced::highlighter::{ self, Highlighter };
 
 use std::io;
 use std::path::{ Path, PathBuf };
@@ -10,6 +11,7 @@ use std::sync::Arc;
 // Run returns a result for errors and etc
 fn main() -> iced::Result {
     Editor::run(Settings {
+        default_font: Font::MONOSPACE,
         fonts: vec![include_bytes!("../fonts/editor-icons.ttf").as_slice().into()],
         ..Settings::default()
     })
@@ -110,7 +112,20 @@ impl Application for Editor {
             action(open_icon(), "Open File", Message::Open),
             action(save_icon(), "Save File", Message::Save)
         ].spacing(10);
-        let input = text_editor(&self.content).on_edit(Message::Edit);
+
+        let input = text_editor(&self.content)
+            .on_edit(Message::Edit)
+            .highlight::<Highlighter>(
+                highlighter::Settings {
+                    theme: highlighter::Theme::Base16Mocha,
+                    extension: self.path
+                        .as_ref()
+                        .and_then(|path| path.extension()?.to_str())
+                        .unwrap_or("rs")
+                        .to_string(),
+                },
+                |highlight, _theme| highlight.to_format()
+            );
 
         let status_bar = {
             let status = if let Some(Error::IOFailed(error)) = self.error.as_ref() {
