@@ -1,5 +1,5 @@
 use iced::executor;
-use iced::widget::{ button, column, container, horizontal_space, row, text, text_editor, tooltip };
+use iced::widget::{ button, column, container, horizontal_space, row, text, text_editor, tooltip, pick_list };
 use iced::{ Font, Command, Application, Element, Length, Settings, Theme };
 use iced::theme;
 use iced::highlighter::{ self, Highlighter };
@@ -21,6 +21,7 @@ struct Editor {
     path: Option<PathBuf>,
     content: text_editor::Content,
     error: Option<Error>,
+    theme: highlighter::Theme,
 }
 
 // Messages should generally to be clone because they represent pure events
@@ -32,6 +33,7 @@ enum Message {
     FileOpened(Result<(PathBuf, Arc<String>), Error>),
     Save,
     FileSaved(Result<PathBuf, Error>),
+    ThemeSelected(highlighter::Theme),
 }
 
 impl Application for Editor {
@@ -50,6 +52,7 @@ impl Application for Editor {
                 path: None,
                 content: text_editor::Content::new(),
                 error: None,
+                theme: highlighter::Theme::Base16Mocha,
             },
             Command::perform(load_file(default_file()), Message::FileOpened),
         )
@@ -101,6 +104,11 @@ impl Application for Editor {
                 self.error = Some(error);
                 Command::none()
             }
+            Message::ThemeSelected(theme) => {
+                self.theme = theme;
+                
+                Command::none()
+            }
         }
     }
 
@@ -110,14 +118,16 @@ impl Application for Editor {
         let controls = row![
             action(new_icon(), "New File", Message::New),
             action(open_icon(), "Open File", Message::Open),
-            action(save_icon(), "Save File", Message::Save)
+            action(save_icon(), "Save File", Message::Save),
+            horizontal_space(Length::Fill),
+            pick_list(highlighter::Theme::ALL, Some(self.theme), Message::ThemeSelected)
         ].spacing(10);
 
         let input = text_editor(&self.content)
             .on_edit(Message::Edit)
             .highlight::<Highlighter>(
                 highlighter::Settings {
-                    theme: highlighter::Theme::Base16Mocha,
+                    theme: self.theme,
                     extension: self.path
                         .as_ref()
                         .and_then(|path| path.extension()?.to_str())
