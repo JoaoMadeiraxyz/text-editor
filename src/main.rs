@@ -1,5 +1,15 @@
 use iced::executor;
-use iced::widget::{ button, column, container, horizontal_space, row, text, text_editor, tooltip, pick_list };
+use iced::widget::{
+    button,
+    column,
+    container,
+    horizontal_space,
+    row,
+    text,
+    text_editor,
+    tooltip,
+    pick_list,
+};
 use iced::{ Font, Command, Application, Element, Length, Settings, Theme };
 use iced::theme;
 use iced::highlighter::{ self, Highlighter };
@@ -106,7 +116,7 @@ impl Application for Editor {
             }
             Message::ThemeSelected(theme) => {
                 self.theme = theme;
-                
+
                 Command::none()
             }
         }
@@ -161,7 +171,7 @@ impl Application for Editor {
 
     // Theme provider method
     fn theme(&self) -> Theme {
-        Theme::Dark
+        if self.theme.is_dark() { Theme::Dark } else { Theme::Light }
     }
 }
 
