@@ -1,4 +1,4 @@
-use iced::executor;
+use iced::{ executor, Subscription };
 use iced::widget::{
     button,
     column,
@@ -10,6 +10,7 @@ use iced::widget::{
     tooltip,
     pick_list,
 };
+use iced::keyboard;
 use iced::{ Font, Command, Application, Element, Length, Settings, Theme };
 use iced::theme;
 use iced::highlighter::{ self, Highlighter };
@@ -32,6 +33,7 @@ struct Editor {
     content: text_editor::Content,
     error: Option<Error>,
     theme: highlighter::Theme,
+    is_dirty: bool,
 }
 
 // Messages should generally to be clone because they represent pure events
@@ -63,6 +65,7 @@ impl Application for Editor {
                 content: text_editor::Content::new(),
                 error: None,
                 theme: highlighter::Theme::Base16Mocha,
+                is_dirty: true,
             },
             Command::perform(load_file(default_file()), Message::FileOpened),
         )
@@ -79,13 +82,16 @@ impl Application for Editor {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Edit(action) => {
-                self.content.edit(action);
+                self.is_dirty = self.is_dirty || action.is_edit();
                 self.error = None;
+                self.content.edit(action);
+
                 Command::none()
             }
             Message::New => {
                 self.path = None;
                 self.content = text_editor::Content::new();
+                self.is_dirty = true;
 
                 Command::none()
             }
@@ -93,6 +99,13 @@ impl Application for Editor {
             Message::FileOpened(Ok((path, content))) => {
                 self.path = Some(path);
                 self.content = text_editor::Content::with(&content);
+                self.is_dirty = false;
+
+                Command::none()
+            }
+            Message::FileOpened(Err(error)) => {
+                self.error = Some(error);
+
                 Command::none()
             }
             Message::Save => {
@@ -102,16 +115,13 @@ impl Application for Editor {
             }
             Message::FileSaved(Ok(path)) => {
                 self.path = Some(path);
+                self.is_dirty = false;
 
                 Command::none()
             }
             Message::FileSaved(Err(error)) => {
                 self.error = Some(error);
 
-                Command::none()
-            }
-            Message::FileOpened(Err(error)) => {
-                self.error = Some(error);
                 Command::none()
             }
             Message::ThemeSelected(theme) => {
@@ -122,13 +132,22 @@ impl Application for Editor {
         }
     }
 
+    fn subscription(&self) -> Subscription<Self::Message> {
+        keyboard::on_key_press(|key_code, modifiers| {
+            match key_code {
+                keyboard::KeyCode::S if modifiers.command() => Some(Message::Save),
+                _ => None,
+            }
+        })
+    }
+
     // Lógica que produz os widgets da interface
     // Logic that produces the interface widgets
     fn view(&self) -> Element<'_, Message> {
         let controls = row![
-            action(new_icon(), "New File", Message::New),
-            action(open_icon(), "Open File", Message::Open),
-            action(save_icon(), "Save File", Message::Save),
+            action(new_icon(), "New File", Some(Message::New)),
+            action(open_icon(), "Open File", Some(Message::Open)),
+            action(save_icon(), "Save File", self.is_dirty.then_some(Message::Save)),
             horizontal_space(Length::Fill),
             pick_list(highlighter::Theme::ALL, Some(self.theme), Message::ThemeSelected)
         ].spacing(10);
@@ -178,10 +197,15 @@ impl Application for Editor {
 fn action<'a>(
     content: Element<'a, Message>,
     label: &str,
-    on_press: Message
+    on_press: Option<Message>
 ) -> Element<'a, Message> {
+    let is_disabled = on_press.is_none();
+
     tooltip(
-        button(container(content).width(30).center_x()).on_press(on_press).padding([5, 10]),
+        button(container(content).width(30).center_x())
+            .on_press_maybe(on_press)
+            .padding([5, 10])
+            .style(if is_disabled { theme::Button::Secondary } else { theme::Button::Primary }),
         label,
         tooltip::Position::FollowCursor
     )
