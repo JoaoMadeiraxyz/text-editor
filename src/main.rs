@@ -28,12 +28,50 @@ fn main() -> iced::Result {
     })
 }
 
+struct EditHistory {
+    history: Vec<String>,
+    current_index: usize,
+}
+
+impl EditHistory {
+    fn new(initial_text: String) -> Self {
+        Self {
+            history: vec![initial_text],
+            current_index: 0,
+        }
+    }
+
+    fn add_edit(&mut self, text: String) {
+        // Remove qualquer edição futura se houver
+        if self.current_index < self.history.len() - 1 {
+            self.history.truncate(self.current_index + 1);
+        }
+        self.history.push(text);
+        self.current_index += 1;
+    }
+
+    fn undo(&mut self) -> Option<String> {
+        if self.current_index > 0 {
+            self.current_index -= 1;
+            Some(self.history[self.current_index].clone())
+        } else {
+            None
+        }
+    }
+
+    fn is_clean(&self) -> bool {
+        self.current_index == 0
+    }
+}
+
 struct Editor {
     path: Option<PathBuf>,
     content: text_editor::Content,
     error: Option<Error>,
     theme: highlighter::Theme,
     is_dirty: bool,
+    block_edit: bool,
+    edit_history: EditHistory,
 }
 
 // Messages should generally to be clone because they represent pure events
@@ -46,6 +84,9 @@ enum Message {
     Save,
     FileSaved(Result<PathBuf, Error>),
     ThemeSelected(highlighter::Theme),
+    BlockEdit,
+    UnblockEdit,
+    Undo,
 }
 
 impl Application for Editor {
@@ -66,6 +107,8 @@ impl Application for Editor {
                 error: None,
                 theme: highlighter::Theme::Base16Mocha,
                 is_dirty: true,
+                block_edit: false,
+                edit_history: EditHistory::new("".to_string()),
             },
             Command::perform(load_file(default_file()), Message::FileOpened),
         )
@@ -82,9 +125,25 @@ impl Application for Editor {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Edit(action) => {
+                if self.block_edit {
+                    return Command::none();
+                }
+
                 self.is_dirty = self.is_dirty || action.is_edit();
                 self.error = None;
                 self.content.edit(action);
+
+                self.edit_history.add_edit(self.content.text().to_string());
+
+                Command::none()
+            }
+            Message::BlockEdit => {
+                self.block_edit = true;
+
+                Command::none()
+            }
+            Message::UnblockEdit => {
+                self.block_edit = false;
 
                 Command::none()
             }
@@ -99,6 +158,8 @@ impl Application for Editor {
             Message::FileOpened(Ok((path, content))) => {
                 self.path = Some(path);
                 self.content = text_editor::Content::with(&content);
+
+                self.edit_history = EditHistory::new(content.as_ref().clone());
                 self.is_dirty = false;
 
                 Command::none()
@@ -110,6 +171,8 @@ impl Application for Editor {
             }
             Message::Save => {
                 let text = self.content.text();
+
+                self.edit_history = EditHistory::new(text.clone());
 
                 Command::perform(save_file(self.path.clone(), text), Message::FileSaved)
             }
@@ -129,16 +192,49 @@ impl Application for Editor {
 
                 Command::none()
             }
+            Message::Undo => {
+                if self.is_dirty {
+                    if let Some(undo_text) = self.edit_history.undo() {
+                        self.content = text_editor::Content::with(&undo_text);
+                        if self.edit_history.is_clean() {
+                            self.is_dirty = false;
+                        }
+                    }
+                }
+
+                Command::none()
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        keyboard::on_key_press(|key_code, modifiers| {
-            match key_code {
-                keyboard::KeyCode::S if modifiers.command() => Some(Message::Save),
-                _ => None,
+        // Define as duas handlers
+        let key_press_handler = keyboard::on_key_press(|key_code, modifiers| {
+            if modifiers.command() {
+                if key_code == keyboard::KeyCode::Z {
+                    return Some(Message::Undo);
+                }
+
+                if key_code == keyboard::KeyCode::S {
+                    return Some(Message::Save);
+                }
+
+                return Some(Message::BlockEdit);
             }
-        })
+
+            None
+        });
+
+        let key_release_handler = keyboard::on_key_release(|_key_code, modifiers| {
+            if !modifiers.command() {
+                return Some(Message::UnblockEdit);
+            }
+
+            None
+        });
+
+        // Retorna uma batch das duas subscriptions
+        Subscription::batch(vec![key_press_handler, key_release_handler])
     }
 
     // Lógica que produz os widgets da interface
